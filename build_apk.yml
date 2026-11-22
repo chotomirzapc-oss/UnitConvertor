@@ -1,0 +1,51 @@
+name: Build EngiConvert APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform files (package com.engiconvert.engineeringcalculator)
+        run: flutter create --org com.engiconvert --project-name engineeringcalculator --platforms android --no-overwrite .
+
+      - name: App label and minSdk 26 (Android 8.0)
+        run: |
+          sed -i 's/android:label="[^"]*"/android:label="EngiConvert"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 26/' android/app/build.gradle* || true
+          grep -n "minSdk" android/app/build.gradle*
+
+      - name: Remove template widget test (references a template app)
+        run: rm -f test/widget_test.dart
+      - run: flutter pub get
+      - run: dart run flutter_launcher_icons
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Unit conversion accuracy tests
+        run: flutter test --reporter expanded | tee test_report.txt
+      - run: flutter build apk --release
+
+      - name: Collect output
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/EngiConvert-1.0.0.apk
+          cp test_report.txt dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EngiConvert-APK
+          path: dist/
